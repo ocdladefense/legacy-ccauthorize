@@ -6,14 +6,11 @@ function ccauthorize_menu()
 	$items = array();
 	
 	$items['ccAuthorize'] = array(
-		'title' => 'Expert Witnesses',
-		'comment' => 'Base router/loader for Saleforce directory.',
-		// 'access' => 'user_is_authenticated',
-		// 'access arguments' => array('admin'),
+		'title' => 'Make a payment',
+		'comment' => 'Process a payment using the Authorize.net platform.',
 		'page callback' => 'processCcFromPost',
 		'output handler' => 'json',
 		'files' => array(
-			// 'dependency' => '/path/to/authorize/dot/net/library',
 			'controller' => 'includes/CCAuthorizeController.php'
 		),
 		'theme' => 'ocdla2',
@@ -82,6 +79,20 @@ function ccauthorize_menu()
 		),
 		'theme' => 'ocdla2',
 		'routeClass' => 'CustomerProfile'
+	);
+
+
+	$items['authNet/getFullCustomerProfile/%profileId'] = array(
+		'title' => 'Customer Payment Profile',
+		'comment' => 'Display customer payment profiles for the given profileId.',
+		'page callback' => 'getFullCustomerProfileForProfileId',
+		'output handler' => 'json',
+		'files' => array(
+			'controller' => 'includes/CustomerProfile.php'
+		),
+		'theme' => 'ocdla2',
+		'routeClass' => 'CustomerProfile',
+		'routeArguments' => array(2)
 	);
 	
 	

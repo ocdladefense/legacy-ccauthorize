@@ -60,7 +60,12 @@ class CustomerProfile extends ControllerBase
 	}
 	
 	
-	
+
+
+
+
+
+
 	/**
 	 *
 	 *
@@ -78,29 +83,10 @@ class CustomerProfile extends ControllerBase
 		$customerProfileId = $json->customerProfileId;
 		$customerProfileId = $customerProfileId ?: $_POST['customerProfileId'];
 
-		if(empty($customerProfileId)){
+		if(empty($customerProfileId)) {
 			return new stdClass;
 		}
-		/*
-		{
-			"customerProfile":{
-				"customerProfileId":"1913990129",
-				"merchantCustomerId":"003Q000001GE2ogIAD",
-				"description":"My Default Card",
-				"email":"jbernal.web.dev@gmail.com"
-			},
-			"paymentProfiles":[
-				{
-					"defaultPaymentProfile":null,
-					"customerPaymentProfileId":"1827666276",
-					"customerProfileId":null,
-					"cardType":"Visa",
-					"cardNumber":"XXXX1111",
-					"expirationDate":"XXXX"
-				}
-			]
-		}
-		*/
+		
 		
 		$customerProfile = $this->getCustomerProfile($customerProfileId);
 		
@@ -130,12 +116,19 @@ class CustomerProfile extends ControllerBase
 	}
 
 	
+
+
+	public function getFullCustomerProfileForProfileId($cprofileId) {
+		// var_dump($customerProfileId);
+		// exit;
+		return $this->getCustomerProfile($cprofileId);
+	}
 	/**
-	 * Show an easy to read list of projects.
+	 * Retrieve the customer's profile from Authorize.net.
 	 *
-	 * A list of projects that are currently being worked on.
+	 * 
 	 */
-	private function getCustomerProfile($customerProfileId)
+	private function getCustomerProfile($cprofileId)
 	{	
 		$this->setupEndpoint();
 		
@@ -146,57 +139,53 @@ class CustomerProfile extends ControllerBase
 
 			$request = new AnetAPI\GetCustomerProfileRequest();
 			$request->setMerchantAuthentication($this->merchantAuthentication);
-			$request->setCustomerProfileId($customerProfileId);
+			$request->setCustomerProfileId($cprofileId);
 			$controller = new AnetController\GetCustomerProfileController($request);
 			$response = $controller->executeWithApiResponse($this->endpoint); 
 		
-			// if (($response != null) && ($response->getMessages()->getResultCode() == "Ok") )
-			// echo "GetCustomerProfile SUCCESS : " .  "\n";
-			$profile = $response->getProfile();
+			// Cust profile.
+			$profilec = $response->getProfile();
 
-			
-			$customerProfile = array(
-				'customerProfileId' => $profile->getCustomerProfileId(),
-				'merchantCustomerId' => $profile->getMerchantCustomerId(),
-				'description' => $profile->getDescription(),
-				'email' => $profile->getEmail()
+			// Profile object to return for the customer.
+			$profile = array(
+				'customerProfileId' 	=> $profilec->getCustomerProfileId(),
+				'merchantCustomerId' 	=> $profilec->getMerchantCustomerId(),
+				'description' 			=> $profilec->getDescription(),
+				'email' 				=> $profilec->getEmail()
 			);
 
-
-			$paymentProfiles = $profile->getPaymentProfiles();
-
-			$jsonPaymentProfiles = array();
-
-
-			for($i =0; $i<count($paymentProfiles); $i++){
-				$CustomerPaymentProfileMaskedType = $paymentProfiles[$i];
-				$BillToAddress = $this->getPaymentProfileBillToAddress($CustomerPaymentProfileMaskedType);
+			
+			// Customer's saved payment profiles.
+			$profiles = array_map(function($masked) {
+				// $masked = $pp[$i];
+				$billTo = $this->getPaymentProfileBillToAddress($masked);
 
 				
-				$PaymentMaskedType = $CustomerPaymentProfileMaskedType->getPayment();
-				$CreditCard = $PaymentMaskedType->getCreditCard();
+				$payment = $masked->getPayment();
+				$card = $payment->getCreditCard();
 
-				$paymentProfile = array(
-					'defaultPaymentProfile' => $CustomerPaymentProfileMaskedType->getDefaultPaymentProfile(),
-					'customerPaymentProfileId' => $CustomerPaymentProfileMaskedType->getCustomerPaymentProfileId(),
-					'customerProfileId' => $CustomerPaymentProfileMaskedType->getCustomerProfileId(),
-					'cardType' => $CreditCard->getCardType(),
-					'cardNumber' => $CreditCard->getCardNumber(),
-					'expirationDate' => $CreditCard->getExpirationDate(),
-					'billToAddress' => $BillToAddress
+				return array(
+					'defaultPaymentProfile' 	=> $masked->getDefaultPaymentProfile(),
+					'customerPaymentProfileId' 	=> $masked->getCustomerPaymentProfileId(),
+					'customerProfileId' 		=> $masked->getCustomerProfileId(),
+					'cardType' 					=> $card->getCardType(),
+					'cardNumber' 				=> $card->getCardNumber(),
+					'expirationDate' 			=> $card->getExpirationDate(),
+					'billToAddress' 			=> $billTo
 				);
+			}, $profilec->getPaymentProfiles());
 
-				$jsonPaymentProfiles[] = $paymentProfile;
-			}
-
-			return array('customerProfile' => $customerProfile, 'paymentProfiles' => $jsonPaymentProfiles);
+			
+			return array('customerProfile' => $profile, 'paymentProfiles' => $profiles);
 		}
 		catch(\Exception $e)
 		{
 			$forJson = array('error' => $e->getMessage());
 		}
 	}
-	
+
+
+
 	public function getCustomerPaymentProfile($customerProfileId,$customerPaymentProfileId){
 		$this->setupEndpoint();
 
