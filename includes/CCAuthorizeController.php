@@ -100,34 +100,49 @@ class CCAuthorizeController extends ControllerBase
 		$ccExp = $_POST['ccExp'];
 		$ccCode = $_POST['ccCode'];
 		$profileId = $_POST['AuthorizeDotNetCustomerProfileId__c'];
+
+		/*
+		if(empty($profileId)) {
+			print "ProfileId is empty.";
+		} else {
+			print "ProfileId IS NOT EMPTY";
+		}
+		*/
+
 		$paymentProfileId = $_POST['authNetPaymentProfileId'];
 		$amount = $_POST['amount'];
 
 		
 		$orderInfo = array(
-			'OrderNumber' => $_POST['OrderNumber'],
-			'OrderSummary' => $_POST['shoppingCartSummary']
+			'OrderNumber' 	=> $_POST['OrderNumber'],
+			'OrderSummary' 	=> $_POST['shoppingCartSummary']
 		);
 		
 		$billTo = array(
-			'SavePaymentMethod' => true,
-			'BillingContactId' =>  $_POST['ContactId'],
-			'BillingFirstName' =>  $_POST['BillingFirstName'],
-			'BillingLastName' =>  $_POST['BillingLastName'],
-			'BillingStreet' =>  $_POST['BillingStreet'],
-			'BillingEmail'					=> $_POST['BillingEmail'],
-			'Description'					=> $_POST['description'],
-			'BillingCity' =>  $_POST['BillingCity'],
-			'BillingState' =>  $_POST['BillingStateCode'],
-			'BillingZip' =>  $_POST['BillingPostalCode']
+			'SavePaymentMethod' 	=> true,
+			'BillingContactId' 		=> $_POST['ContactId'],
+			'BillingFirstName' 		=> $_POST['BillingFirstName'],
+			'BillingLastName' 		=> $_POST['BillingLastName'],
+			'BillingStreet' 		=> $_POST['BillingStreet'],
+			'BillingEmail'			=> $_POST['BillingEmail'],
+			'Description'			=> $_POST['description'],
+			'BillingCity' 			=> $_POST['BillingCity'],
+			'BillingState' 			=> $_POST['BillingStateCode'],
+			'BillingZip'			=> $_POST['BillingPostalCode']
 		);
 		
 		
-		if(isset($profileId) && !empty($paymentProfileId)){
+
+
+		// If a customer profile is not selected we automatically save a new profile.
+		// If both customerId and paymentProfileId have been provided use the card on file.
+		// Otherwise we should place a new order but NOT save a duplicate customer profile.
+		if(empty($profileId)) {
+			$options = false; // array("saveProfile" => false);
+			$result = $this->processCc($ccNum, $ccExp, $ccCode, $amount, $billTo, $orderInfo, $options);
+		} else if(!empty($profileId) && !empty($paymentProfileId)) {
 			$result = $this->processCcWithPaymentProfile($amount, $orderInfo, $profileId, $paymentProfileId);
-		}
-		
-		else {
+		} else {
 			$result = $this->processCc($ccNum, $ccExp, $ccCode, $amount, $billTo, $orderInfo);
 		}
 		
@@ -140,12 +155,12 @@ class CCAuthorizeController extends ControllerBase
 	private function processCcWithPaymentProfile($amount, $orderInfo, $profileId, $paymentProfileId){
 		$endpoint = \setting('ccAuthorize.useSandbox') ? \setting('ccAuthorize.sandboxEndpoint') : \setting('ccAuthorize.endpoint');
 			
-    $paymentProfile = new AnetAPI\PaymentProfileType();
-    $paymentProfile->setPaymentProfileId($paymentProfileId);
-	
-    $profileToCharge = new AnetAPI\CustomerProfilePaymentType();
-    $profileToCharge->setCustomerProfileId($profileId);
-    $profileToCharge->setPaymentProfile($paymentProfile);
+		$paymentProfile = new AnetAPI\PaymentProfileType();
+		$paymentProfile->setPaymentProfileId($paymentProfileId);
+		
+		$profileToCharge = new AnetAPI\CustomerProfilePaymentType();
+		$profileToCharge->setCustomerProfileId($profileId);
+		$profileToCharge->setPaymentProfile($paymentProfile);
 
 		$forJson = array();
 		
@@ -235,8 +250,15 @@ class CCAuthorizeController extends ControllerBase
 	 *
 	 * A list of projects that are currently being worked on.
 	 */
-	private function processCc($ccNumber,$ccExpiration,$ccCode,$amount,$billTo,$orderInfo)
+	private function processCc($ccNumber,$ccExpiration,$ccCode,$amount,$billTo,$orderInfo,$createProfile = true)
 	{	
+		/*
+		if(false === $createProfile) {
+			print "Create Profile is false.";
+		} else {
+			print "Create Profile is true.";
+		}
+		*/
 		$forJson = array();
 		
 		try
@@ -272,6 +294,7 @@ class CCAuthorizeController extends ControllerBase
 			$bill->setZip($billTo['BillingZip']);
 			$bill->setCountry('USA');
 		
+			$email = $billTo["BillingEmail"];
 			// $solution = new AnetAPI\SolutionType();
 			// $solution->setId('CLICKPDX');
 		
@@ -279,7 +302,7 @@ class CCAuthorizeController extends ControllerBase
 			$paymentOne = new AnetAPI\PaymentType();
 			$paymentOne->setCreditCard($creditCard);
 
-		// Create a transaction
+			// Create a transaction
 			$transactionRequestType = new AnetAPI\TransactionRequestType();
 			$transactionRequestType->setTransactionType("authCaptureTransaction");   
 			$transactionRequestType->setAmount($amount);
@@ -308,7 +331,8 @@ class CCAuthorizeController extends ControllerBase
 			// print "<pre>".print_r($response,true)."</pre>";
 			$forJson = $this->getTransactionResponseResults($response);
 			
-			if($billTo['SavePaymentMethod'])
+			
+			if(true === $createProfile && $billTo['SavePaymentMethod'])
 			{
 				if(empty($forJson['TransactionResponseId']) || empty($billTo['BillingContactId']))
 				{
@@ -316,10 +340,11 @@ class CCAuthorizeController extends ControllerBase
 				}
 				else
 				{
-					$profileResponses = $this->createCustomerProfile($forJson['TransactionResponseId'],$billTo['BillingContactId']);
+					$profileResponses = $this->createCustomerProfile($forJson['TransactionResponseId'],$billTo['BillingContactId'], $email);
 					$forJson = array_merge($forJson,$profileResponses);
 				}
 			}
+			
 		}
 		catch(\Exception $e)
 		{
@@ -416,41 +441,40 @@ class CCAuthorizeController extends ControllerBase
 	
 
 	
-	public function createCustomerProfile($transId, $contactId, $email, $description = 'My Default Card')
-  {
+	public function createCustomerProfile($transId, $contactId, $email, $description = 'My Default Card') {
 
 		$customerProfile = new AnetAPI\CustomerProfileBaseType();
 		$customerProfile->setMerchantCustomerId($contactId);
 		$customerProfile->setEmail($email);
 		$customerProfile->setDescription($description);
-      
-	  $request = new AnetAPI\CreateCustomerProfileFromTransactionRequest();
-	  $request->setMerchantAuthentication($this->getMerchantAuth());
-	  $request->setTransId($transId);
-	  // You can either specify the customer information in form of customerProfileBaseType object
-	  $request->setCustomer($customerProfile);
-	  //  OR   
- 	  // You can just provide the customer Profile ID
-      //$request->setCustomerProfileId("123343");
+
+		$request = new AnetAPI\CreateCustomerProfileFromTransactionRequest();
+		$request->setMerchantAuthentication($this->getMerchantAuth());
+		$request->setTransId($transId);
+		// You can either specify the customer information in form of customerProfileBaseType object
+		$request->setCustomer($customerProfile);
+		//  OR   
+		// You can just provide the customer Profile ID
+		//$request->setCustomerProfileId("123343");
 
 		$endpoint = \setting('ccAuthorize.useSandbox') ? \setting('ccAuthorize.sandboxEndpoint') : \setting('ccAuthorize.endpoint');
 			
-	  $controller = new AnetController\CreateCustomerProfileFromTransactionController($request);
+		$controller = new AnetController\CreateCustomerProfileFromTransactionController($request);
 
-	  $response = $controller->executeWithApiResponse($endpoint);
+		$response = $controller->executeWithApiResponse($endpoint);
 
 
-	  if (($response != null) && ($response->getMessages()->getResultCode() == self::RESPONSE_OK) )
-	  {
-		  $msg['AuthorizeDotNetCustomerProfileId__c'] = $response->getCustomerProfileId();
-	  }
-	  else
-	  {
-		  $errorMessages = $response->getMessages()->getMessage();
-		  $msg['errors'] = array("PROFILE ERROR : " . $errorMessages[0]->getCode() . "  " .$errorMessages[0]->getText());
-	  }
-	  
-	  return $msg;
+		if (($response != null) && ($response->getMessages()->getResultCode() == self::RESPONSE_OK) )
+		{
+			$msg['AuthorizeDotNetCustomerProfileId__c'] = $response->getCustomerProfileId();
+		}
+		else
+		{
+			$errorMessages = $response->getMessages()->getMessage();
+			$msg['errors'] = array("PROFILE ERROR : " . $errorMessages[0]->getCode() . "  " .$errorMessages[0]->getText());
+		}
+
+		return $msg;
 	}
 
 }
