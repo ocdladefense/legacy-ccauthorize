@@ -17,6 +17,19 @@ function ccauthorize_menu()
 		'routeClass' => 'CCAuthorizeController'
 	);
 
+
+	$items['orderentry/ccauthorize'] = array(
+		'title' => 'Make a payment using the Salesforce Order Entry application.',
+		'comment' => 'Process a payment using the Authorize.net platform.',
+		'page callback' => 'processOrderEntryApp',
+		'output handler' => 'json',
+		'files' => array(
+			'controller' => 'includes/CCAuthorizeController.php'
+		),
+		'theme' => 'ocdla2',
+		'routeClass' => 'CCAuthorizeController'
+	);
+
 	
 	
 	$items['authNet/ccAuthorizeWithProfileTest'] = array(

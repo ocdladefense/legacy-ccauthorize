@@ -93,7 +93,7 @@ class CCAuthorizeController extends ControllerBase
 	 *
 	 * @info https://developer.authorize.net/hello_world/testing_guide/
 	 */
-	public function processCcFromPost()
+	public function processOrderEntryApp()
 	{
 		
 		$ccNum = $_POST['ccNum'];
@@ -151,6 +151,50 @@ class CCAuthorizeController extends ControllerBase
 	
 	
 	
+
+	public function processCcFromPost()
+	{
+		
+		$ccNum = $_POST['ccNum'];
+		$ccExp = $_POST['ccExp'];
+		$ccCode = $_POST['ccCode'];
+		$profileId = $_POST['AuthorizeDotNetCustomerProfileId__c'];
+		$paymentProfileId = $_POST['authNetPaymentProfileId'];
+		$amount = $_POST['amount'];
+
+		
+		$orderInfo = array(
+			'OrderNumber' => $_POST['OrderNumber'],
+			'OrderSummary' => $_POST['shoppingCartSummary']
+		);
+		
+		$billTo = array(
+			'SavePaymentMethod' => true,
+			'BillingContactId' =>  $_POST['ContactId'],
+			'BillingFirstName' =>  $_POST['BillingFirstName'],
+			'BillingLastName' =>  $_POST['BillingLastName'],
+			'BillingStreet' =>  $_POST['BillingStreet'],
+			'BillingEmail'					=> $_POST['BillingEmail'],
+			'Description'					=> $_POST['description'],
+			'BillingCity' =>  $_POST['BillingCity'],
+			'BillingState' =>  $_POST['BillingStateCode'],
+			'BillingZip' =>  $_POST['BillingPostalCode']
+		);
+		
+		
+		if(isset($profileId) && !empty($paymentProfileId)){
+			$result = $this->processCcWithPaymentProfile($amount, $orderInfo, $profileId, $paymentProfileId);
+		}
+		
+		else {
+			$result = $this->processCc($ccNum, $ccExp, $ccCode, $amount, $billTo, $orderInfo);
+		}
+		
+		return $result;
+	}
+
+
+
 	
 	private function processCcWithPaymentProfile($amount, $orderInfo, $profileId, $paymentProfileId){
 		$endpoint = \setting('ccAuthorize.useSandbox') ? \setting('ccAuthorize.sandboxEndpoint') : \setting('ccAuthorize.endpoint');
